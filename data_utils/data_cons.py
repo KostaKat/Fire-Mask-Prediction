@@ -49,3 +49,18 @@ DATA_STATS = {
     'PrevFireMask': (-1., 1., 0., 1.),
     'FireMask': (-1., 1., 0., 1.)
 }
+TITLES = [
+  'Elevation',
+  'Wind\ndirection',
+  'Wind\nvelocity',
+  'Min\ntemp',
+  'Max\ntemp',
+  'Humidity',
+  'Precip',
+  'Drought',
+  'Vegetation',
+  'Population\ndensity',
+  'Energy\nrelease\ncomponent',
+  'Previous\nfire\nmask',
+  'Fire\nmask'
+]

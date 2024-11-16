@@ -1,8 +1,7 @@
-import re
-from typing import Text, List, Dict, Tuple
-
-import tensorflow as tf
 """Dataset reader for Earth Engine data."""
+from data_utils import data_cons as dc
+
+import re
 
 def _get_base_key(key: Text) -> Text:
     """Extracts the base key from the provided key.
@@ -48,10 +47,10 @@ def _clip_and_rescale(inputs: tf.Tensor, key: Text) -> tf.Tensor:
         ValueError if there are no data statistics available for `key`.
     """
     base_key = _get_base_key(key)
-    if base_key not in DATA_STATS:
+    if base_key not in dc.DATA_STATS:
         raise ValueError(
             'No data statistics available for the requested key: {}.'.format(key))
-    min_val, max_val, _, _ = DATA_STATS[base_key]
+    min_val, max_val, _, _ = dc.DATA_STATS[base_key]
     inputs = tf.clip_by_value(inputs, min_val, max_val)
     return tf.math.divide_no_nan((inputs - min_val), (max_val - min_val))
 
