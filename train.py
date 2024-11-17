@@ -7,8 +7,6 @@ import time
 import itertools
 import matplotlib.pyplot as plt
 import torch
-import io
-
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
@@ -26,14 +24,17 @@ except ImportError:
     from urllib import URLopener
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from pynvml import *
+nvmlInit()
 handle = nvmlDeviceGetHandleByIndex(int(os.environ["CUDA_VISIBLE_DEVICES"]))
 print("Device :", nvmlDeviceGetName(handle))
 
 config_vit = CONFIGS_ViT_seg['R50-ViT-B_16']
-config_vit.n_classes = 6
+config_vit.n_classes = 2
 config_vit.n_skip = 3
-config_vit.patches.grid = (int(256 / 16), int(256 / 16))
-net = ViT_seg(config_vit, img_size=256, num_classes=6).cuda()
+config_vit.encoder_x_in_channels = 12  # Add this attribute to the config
+config_vit.encoder_y_in_channels = 1   # Add this attribute to the config
+config_vit.patches.grid = (4, 4) 
+net = ViT_seg(config_vit, img_size=64, num_classes=6).cuda()
 net.load_from(weights=np.load(config_vit.pretrained_path))
 params = 0
 for name, param in net.named_parameters():

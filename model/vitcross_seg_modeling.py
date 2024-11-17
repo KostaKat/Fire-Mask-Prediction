@@ -245,12 +245,14 @@ class Embeddings(nn.Module):
 
         if self.hybrid:
             self.hybrid_model = FuseResNetV2(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor)
-            in_channels = self.hybrid_model.width * 16
-        self.patch_embeddings = Conv2d(in_channels=in_channels,
+            in_channels_x = self.hybrid_model.width * 16  # For first encoder output
+            in_channels_y = self.hybrid_model.width * 16  # For second encoder output
+
+        self.patch_embeddings = Conv2d(in_channels=config.in_channels_x,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
                                        stride=patch_size)
-        self.patch_embeddingsd = Conv2d(in_channels=in_channels,
+        self.patch_embeddingsd = Conv2d(in_channels=config.in_channels_y,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
                                        stride=patch_size)
