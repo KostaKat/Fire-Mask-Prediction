@@ -1,3 +1,4 @@
+from pynvml import *
 import numpy as np
 from glob import glob
 from tqdm import tqdm_notebook as tqdm
@@ -22,19 +23,13 @@ try:
     from urllib.request import URLopener
 except ImportError:
     from urllib import URLopener
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-from pynvml import *
-nvmlInit()
-handle = nvmlDeviceGetHandleByIndex(int(os.environ["CUDA_VISIBLE_DEVICES"]))
-print("Device :", nvmlDeviceGetName(handle))
 
-config_vit = CONFIGS_ViT_seg['R50-ViT-B_16']
+
+config_vit = CONFIGS_ViT_seg['R50-ViT-B_16_C12-1']
 config_vit.n_classes = 2
 config_vit.n_skip = 3
-config_vit.encoder_x_in_channels = 12  # Add this attribute to the config
-config_vit.encoder_y_in_channels = 1   # Add this attribute to the config
-config_vit.patches.grid = (4, 4) 
-net = ViT_seg(config_vit, img_size=64, num_classes=6).cuda()
+config_vit.patches.grid = (4, 4)
+net = ViT_seg(config_vit, img_size=224, num_classes=3).cuda()
 net.load_from(weights=np.load(config_vit.pretrained_path))
 params = 0
 for name, param in net.named_parameters():
@@ -47,7 +42,7 @@ print("testing : ", test_ids)
 print("BATCH_SIZE: ", BATCH_SIZE)
 print("Stride Size: ", Stride_Size)
 train_set = ISPRS_dataset(train_ids, cache=CACHE)
-train_loader = torch.utils.data.DataLoader(train_set,batch_size=BATCH_SIZE)
+train_loader = torch.utils.data.DataLoader(train_set, batch_size=BATCH_SIZE)
 
 base_lr = 0.01
 params_dict = dict(net.named_parameters())
@@ -55,28 +50,34 @@ params = []
 for key, value in params_dict.items():
     if '_D' in key:
         # Decoder weights are trained at the nominal learning rate
-        params += [{'params':[value],'lr': base_lr}]
+        params += [{'params': [value], 'lr': base_lr}]
     else:
         # Encoder weights are trained at lr / 2 (we have VGG-16 weights as initialization)
-        params += [{'params':[value],'lr': base_lr / 2}]
+        params += [{'params': [value], 'lr': base_lr / 2}]
 
-optimizer = optim.SGD(net.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0005)
+optimizer = optim.SGD(net.parameters(), lr=base_lr,
+                      momentum=0.9, weight_decay=0.0005)
 # We define the scheduler
 scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [25, 35, 45], gamma=0.1)
 
 
 def test(net, test_ids, all=False, stride=WINDOW_SIZE[0], batch_size=BATCH_SIZE, window_size=WINDOW_SIZE):
     # Use the network on the test set
-    ## Potsdam
+    # Potsdam
     if DATASET == 'Potsdam':
-        test_images = (1 / 255 * np.asarray(io.imread(DATA_FOLDER.format(id))[:, :, :3], dtype='float32') for id in test_ids)
+        test_images = (1 / 255 * np.asarray(io.imread(DATA_FOLDER.format(id))
+                       [:, :, :3], dtype='float32') for id in test_ids)
         # test_images = (1 / 255 * np.asarray(io.imread(DATA_FOLDER.format(id))[:, :, (3, 0, 1, 2)][:, :, :3], dtype='float32') for id in test_ids)
-    ## Vaihingen
+    # Vaihingen
     else:
-        test_images = (1 / 255 * np.asarray(io.imread(DATA_FOLDER.format(id)), dtype='float32') for id in test_ids)
-    test_dsms = (np.asarray(io.imread(DSM_FOLDER.format(id)), dtype='float32') for id in test_ids)
-    test_labels = (np.asarray(io.imread(LABEL_FOLDER.format(id)), dtype='uint8') for id in test_ids)
-    eroded_labels = (convert_from_color(io.imread(ERODED_FOLDER.format(id))) for id in test_ids)
+        test_images = (1 / 255 * np.asarray(io.imread(DATA_FOLDER.format(id)),
+                       dtype='float32') for id in test_ids)
+    test_dsms = (np.asarray(io.imread(DSM_FOLDER.format(id)),
+                 dtype='float32') for id in test_ids)
+    test_labels = (np.asarray(io.imread(LABEL_FOLDER.format(id)),
+                   dtype='uint8') for id in test_ids)
+    eroded_labels = (convert_from_color(
+        io.imread(ERODED_FOLDER.format(id))) for id in test_ids)
     all_preds = []
     all_gts = []
 
@@ -85,21 +86,26 @@ def test(net, test_ids, all=False, stride=WINDOW_SIZE[0], batch_size=BATCH_SIZE,
         for img, dsm, gt, gt_e in tqdm(zip(test_images, test_dsms, test_labels, eroded_labels), total=len(test_ids), leave=False):
             pred = np.zeros(img.shape[:2] + (N_CLASSES,))
 
-            total = count_sliding_window(img, step=stride, window_size=window_size) // batch_size
+            total = count_sliding_window(
+                img, step=stride, window_size=window_size) // batch_size
             for i, coords in enumerate(
                     tqdm(grouper(batch_size, sliding_window(img, step=stride, window_size=window_size)), total=total,
-                        leave=False)):
+                         leave=False)):
                 # Build the tensor
-                image_patches = [np.copy(img[x:x + w, y:y + h]).transpose((2, 0, 1)) for x, y, w, h in coords]
+                image_patches = [
+                    np.copy(img[x:x + w, y:y + h]).transpose((2, 0, 1)) for x, y, w, h in coords]
                 image_patches = np.asarray(image_patches)
-                image_patches = Variable(torch.from_numpy(image_patches).cuda(), volatile=True)
+                image_patches = Variable(torch.from_numpy(
+                    image_patches).cuda(), volatile=True)
 
                 min = np.min(dsm)
                 max = np.max(dsm)
                 dsm = (dsm - min) / (max - min)
-                dsm_patches = [np.copy(dsm[x:x + w, y:y + h]) for x, y, w, h in coords]
+                dsm_patches = [np.copy(dsm[x:x + w, y:y + h])
+                               for x, y, w, h in coords]
                 dsm_patches = np.asarray(dsm_patches)
-                dsm_patches = Variable(torch.from_numpy(dsm_patches).cuda(), volatile=True)
+                dsm_patches = Variable(torch.from_numpy(
+                    dsm_patches).cuda(), volatile=True)
 
                 # Do the inference
                 outs = net(image_patches, dsm_patches)
@@ -115,7 +121,7 @@ def test(net, test_ids, all=False, stride=WINDOW_SIZE[0], batch_size=BATCH_SIZE,
             all_preds.append(pred)
             all_gts.append(gt_e)
             clear_output()
-            
+
     accuracy = metrics(np.concatenate([p.ravel() for p in all_preds]),
                        np.concatenate([p.ravel() for p in all_gts]).ravel())
     if all:
@@ -138,7 +144,8 @@ def train(net, optimizer, epochs, scheduler=None, weights=WEIGHTS, save_epoch=1)
             scheduler.step()
         net.train()
         for batch_idx, (data, dsm, target) in enumerate(train_loader):
-            data, dsm, target = Variable(data.cuda()), Variable(dsm.cuda()), Variable(target.cuda())
+            data, dsm, target = Variable(data.cuda()), Variable(
+                dsm.cuda()), Variable(target.cuda())
             optimizer.zero_grad()
             output = net(data, dsm)
             loss = CrossEntropy2d(output, target, weight=weights)
@@ -150,7 +157,8 @@ def train(net, optimizer, epochs, scheduler=None, weights=WEIGHTS, save_epoch=1)
 
             if iter_ % 100 == 0:
                 clear_output()
-                rgb = np.asarray(255 * np.transpose(data.data.cpu().numpy()[0], (1, 2, 0)), dtype='uint8')
+                rgb = np.asarray(
+                    255 * np.transpose(data.data.cpu().numpy()[0], (1, 2, 0)), dtype='uint8')
                 pred = np.argmax(output.data.cpu().numpy()[0], axis=0)
                 gt = target.data.cpu().numpy()[0]
                 print('Train (epoch {}/{}) [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tAccuracy: {}'.format(
@@ -166,15 +174,17 @@ def train(net, optimizer, epochs, scheduler=None, weights=WEIGHTS, save_epoch=1)
                 acc = test(net, test_ids, all=False, stride=Stride_Size)
                 net.train()
                 if acc > acc_best:
-                    torch.save(net.state_dict(), './resultsv_se_ablation/segnet256_epoch{}_{}'.format(e, acc))
+                    torch.save(
+                        net.state_dict(), './resultsv_se_ablation/segnet256_epoch{}_{}'.format(e, acc))
                     acc_best = acc
     print('acc_best: ', acc_best)
 
+
 #####   train   ####
-time_start=time.time()
+time_start = time.time()
 train(net, optimizer, 50, scheduler)
-time_end=time.time()
-print('Total Time Cost: ',time_end-time_start)
+time_end = time.time()
+print('Total Time Cost: ', time_end-time_start)
 
 #####   test   ####
 # net.load_state_dict(torch.load('YOUR_MODEL'))

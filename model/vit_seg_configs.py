@@ -1,5 +1,6 @@
 import ml_collections
 
+
 def get_b16_config():
     """Returns the ViT-B/16 configuration."""
     config = ml_collections.ConfigDict()
@@ -40,10 +41,32 @@ def get_testing():
     config.representation_size = None
     return config
 
+
 def get_r50_b16_config():
     """Returns the Resnet50 + ViT-B/16 configuration."""
     config = get_b16_config()
     config.patches.grid = (4, 4)
+    config.resnet = ml_collections.ConfigDict()
+    config.resnet.num_layers = (3, 4, 9)
+    config.resnet.width_factor = 1
+
+    config.classifier = 'seg'
+    config.pretrained_path = './pretrain/R50+ViT-B_16.npz'
+    config.decoder_channels = (256, 128, 64, 16)
+    config.skip_channels = [512, 256, 64, 16]
+    config.n_classes = 2
+    config.n_skip = 3
+    config.activation = 'softmax'
+
+    return config
+
+
+def get_r50_b16_channel_config():
+    """Returns the Resnet50 + ViT-B/16 configuration."""
+    config = get_b16_config()
+    config.patches.grid = (4, 4)
+    config.in_channels_x = 12
+    config.in_channels_y = 1
     config.resnet = ml_collections.ConfigDict()
     config.resnet.num_layers = (3, 4, 9)
     config.resnet.width_factor = 1
