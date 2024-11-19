@@ -6,6 +6,7 @@ from __future__ import print_function
 import copy
 import logging
 import math
+import torch.nn.functional as F
 
 from os.path import join as pjoin
 
@@ -248,7 +249,6 @@ class Mlp(nn.Module):
 class Embeddings(nn.Module):
     """Construct the embeddings from patch, position embeddings.
     """
-
     def __init__(self, config, img_size, in_channels=3):
         super(Embeddings, self).__init__()
         self.hybrid = None
@@ -257,51 +257,47 @@ class Embeddings(nn.Module):
 
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
-            patch_size = (img_size[0] // 16 // grid_size[0],
-                          img_size[1] // 16 // grid_size[1])
+            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])
             patch_size_real = (patch_size[0] * 16, patch_size[1] * 16)
-            n_patches = (img_size[0] // patch_size_real[0]) * \
-                (img_size[1] // patch_size_real[1])
+            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1])  
             self.hybrid = True
         else:
             patch_size = _pair(config.patches["size"])
-            n_patches = (img_size[0] // patch_size[0]) * \
-                (img_size[1] // patch_size[1])
+            n_patches = (img_size[0] // patch_size[0]) * (img_size[1] // patch_size[1])
             self.hybrid = False
 
         if self.hybrid:
-            self.hybrid_model = FuseResNetV2(
-                block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor)
-            in_channels_x = self.hybrid_model.width * 16  # For first encoder output
-            in_channels_y = self.hybrid_model.width * 16  # For second encoder output
-
-        self.patch_embeddings = Conv2d(in_channels=config.in_channels_x,
+            self.hybrid_model = FuseResNetV2(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor)
+            in_channels = self.hybrid_model.width * 16
+        
+        self.patch_embeddings = Conv2d(in_channels=in_channels,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
                                        stride=patch_size)
-        self.patch_embeddingsd = Conv2d(in_channels=config.in_channels_y,
-                                        out_channels=config.hidden_size,
-                                        kernel_size=patch_size,
-                                        stride=patch_size)
-        self.position_embeddings = nn.Parameter(
-            torch.zeros(1, n_patches, config.hidden_size))
+        self.patch_embeddingsd = Conv2d(in_channels=in_channels,
+                                       out_channels=config.hidden_size,
+                                       kernel_size=patch_size,
+                                       stride=patch_size)
+        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches, config.hidden_size))
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
+
     def forward(self, x, y):
-        y = y.unsqueeze(1)
+ 
+        if y.dim() == 3:
+            y = y.unsqueeze(1)
         if self.hybrid:
             x, y, features = self.hybrid_model(x, y)
         else:
             features = None
-        # (B, hidden. n_patches^(1/2), n_patches^(1/2))
-        x = self.patch_embeddings(x)
+        x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2))
         y = self.patch_embeddingsd(y)
         x = x.flatten(2)
         x = x.transpose(-1, -2)  # (B, n_patches, hidden)
         y = y.flatten(2)
         y = y.transpose(-1, -2)
-
+        
         embeddingsx = x + self.position_embeddings
         embeddingsx = self.dropout(embeddingsx)
         embeddingsy = y + self.position_embeddings
@@ -505,15 +501,20 @@ class DecoderBlock(nn.Module):
             padding=1,
             use_batchnorm=use_batchnorm,
         )
-        self.up = nn.UpsamplingBilinear2d(scale_factor=2)
+        # self.up = nn.UpsamplingBilinear2d(scale_factor=2)
 
     def forward(self, x, skip=None):
-        x = self.up(x)
-        if skip is not None:
-            x = torch.cat([x, skip], dim=1)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        return x
+       if skip is not None:
+           # Upsample x to match the size of skip
+           x = F.interpolate(x, size=skip.shape[2:], mode='bilinear', align_corners=False)
+           print(f"DecoderBlock: x shape after upsampling: {x.shape}, skip shape: {skip.shape}")
+           x = torch.cat([x, skip], dim=1)
+       else:
+           # Optionally, define a default upsampling scale or method
+           x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
+       x = self.conv1(x)
+       x = self.conv2(x)
+       return x
 
 
 class SegmentationHead(nn.Sequential):
@@ -544,31 +545,35 @@ class DecoderCup(nn.Module):
 
         if self.config.n_skip != 0:
             skip_channels = self.config.skip_channels
-            # re-select the skip channels according to n_skip
-            for i in range(4-self.config.n_skip):
-                skip_channels[3-i] = 0
-
+            # Re-select the skip channels according to n_skip
+            for i in range(4 - self.config.n_skip):
+                skip_channels[3 - i] = 0
         else:
             skip_channels = [0, 0, 0, 0]
 
         blocks = [
-            DecoderBlock(in_ch, out_ch, sk_ch) for in_ch, out_ch, sk_ch in zip(in_channels, out_channels, skip_channels)
+            DecoderBlock(in_ch, out_ch, sk_ch) for in_ch, out_ch, sk_ch in
+            zip(in_channels, out_channels, skip_channels)
         ]
         self.blocks = nn.ModuleList(blocks)
 
     def forward(self, hidden_states, features=None):
-        # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
         B, n_patch, hidden = hidden_states.size()
         h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
+        print(f"DecoderCup: initial x shape: {x.shape}")
+
         x = self.conv_more(x)
         for i, decoder_block in enumerate(self.blocks):
             if features is not None:
                 skip = features[i] if (i < self.config.n_skip) else None
             else:
                 skip = None
+            if skip is not None:
+                print(f"DecoderCup: skip connection at index {i} has shape: {skip.shape}")
             x = decoder_block(x, skip=skip)
+            print(f"DecoderCup: output of decoder block {i} has shape: {x.shape}")
         return x
 
 

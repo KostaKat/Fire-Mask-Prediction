@@ -65,8 +65,6 @@ def get_r50_b16_channel_config():
     """Returns the Resnet50 + ViT-B/16 configuration."""
     config = get_b16_config()
     config.patches.grid = (4, 4)
-    config.in_channels_x = 12
-    config.in_channels_y = 1
     config.resnet = ml_collections.ConfigDict()
     config.resnet.num_layers = (3, 4, 9)
     config.resnet.width_factor = 1

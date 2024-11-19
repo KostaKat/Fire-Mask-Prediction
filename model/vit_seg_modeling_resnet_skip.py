@@ -260,9 +260,13 @@ class FuseResNetV2(nn.Module):
         b, c, in_size, _ = x.size()
         x = self.root(x) #64*128
         y = self.rootd(y) #64*128
+        print(f"Encoder x after root: {x.shape}, y after rootd: {y.shape}")
+
         if SE:
             x = self.se_layer0(x, y)
         features.append(x)
+        print(f"Feature appended at level 0: {x.shape}")
+
         x = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
         y = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(y)
         for i in range(len(self.body)-1):
