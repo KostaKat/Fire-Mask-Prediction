@@ -1,5 +1,5 @@
 """Dataset reader for Earth Engine data."""
-from data_utils import data_cons
+from data_utils import data_cons as dc
 from data_utils.data_cons import INPUT_FEATURES, OUTPUT_FEATURES
 from typing import Dict, List, Optional, Tuple, Text
 import tensorflow as tf
@@ -50,7 +50,7 @@ def _clip_and_rescale(inputs: tf.Tensor, key: Text) -> tf.Tensor:
         ValueError if there are no data statistics available for `key`.
     """
     base_key = _get_base_key(key)
-    if base_key not in DATA_STATS:
+    if base_key not in dc.DATA_STATS:
         raise ValueError(
             'No data statistics available for the requested key: {}.'.format(key))
     min_val, max_val, _, _ = DATA_STATS[base_key]
@@ -72,10 +72,10 @@ def _clip_and_normalize(inputs: tf.Tensor, key: Text) -> tf.Tensor:
         ValueError if there are no data statistics available for `key`.
     """
     base_key = _get_base_key(key)
-    if base_key not in DATA_STATS:
+    if base_key not in dc.DATA_STATS:
         raise ValueError(
             'No data statistics available for the requested key: {}.'.format(key))
-    min_val, max_val, mean, std = DATA_STATS[base_key]
+    min_val, max_val, mean, std = dc.DATA_STATS[base_key]
     inputs = tf.clip_by_value(inputs, min_val, max_val)
     inputs = inputs - mean
     return tf.math.divide_no_nan(inputs, std)
@@ -124,7 +124,7 @@ def _parse_fn(
     """
     if (random_crop and center_crop):
         raise ValueError('Cannot have both random_crop and center_crop be True')
-    input_features, output_features = data_cons.INPUT_FEATURES, data_cons.OUTPUT_FEATURES
+    input_features, output_features = dc.INPUT_FEATURES, dc.OUTPUT_FEATURES
     feature_names = input_features + output_features
     features_dict = _get_features_dict(data_size, feature_names)
     features = tf.io.parse_single_example(example_proto, features_dict)
