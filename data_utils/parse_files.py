@@ -1,5 +1,6 @@
 """Dataset reader for Earth Engine data."""
 from data_utils import data_cons as dc
+from data_utils import augs
 from data_utils.data_cons import INPUT_FEATURES, OUTPUT_FEATURES
 from typing import Dict, List, Optional, Tuple, Text
 import tensorflow as tf
@@ -154,10 +155,10 @@ def _parse_fn(
     output_img = tf.transpose(outputs_stacked, [1, 2, 0])
 
     if random_crop:
-        input_img, output_img = random_crop_input_and_output_images(
+        input_img, output_img = augs.random_crop_input_and_output_images(
             input_img, output_img, sample_size, num_in_channels, 1)
     if center_crop:
-        input_img, output_img = center_crop_input_and_output_images(
+        input_img, output_img = augs.center_crop_input_and_output_images(
             input_img, output_img, sample_size)
     return input_img, output_img
 
