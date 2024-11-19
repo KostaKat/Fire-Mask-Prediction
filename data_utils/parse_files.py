@@ -4,6 +4,12 @@ from typing import Dict, List, Optional, Tuple, Text
 import tensorflow as tf
 import re
 
+
+INPUT_FEATURES = ['elevation', 'th', 'vs',  'tmmn', 'tmmx', 'sph',
+                  'pr', 'pdsi', 'NDVI', 'population', 'erc', 'PrevFireMask']
+
+OUTPUT_FEATURES = ['FireMask', ]
+
 def _get_base_key(key: Text) -> Text:
     """Extracts the base key from the provided key.
 
