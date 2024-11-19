@@ -124,7 +124,7 @@ def _parse_fn(
     """
     if (random_crop and center_crop):
         raise ValueError('Cannot have both random_crop and center_crop be True')
-    input_features, output_features = INPUT_FEATURES, OUTPUT_FEATURES
+    input_features, output_features = data_cons.INPUT_FEATURES, data_cons.OUTPUT_FEATURES
     feature_names = input_features + output_features
     features_dict = _get_features_dict(data_size, feature_names)
     features = tf.io.parse_single_example(example_proto, features_dict)
