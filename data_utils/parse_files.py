@@ -1,5 +1,6 @@
 """Dataset reader for Earth Engine data."""
 from data_utils import data_cons
+from data_utils.data_cons import INPUT_FEATURES, OUTPUT_FEATURES
 from typing import Dict, List, Optional, Tuple, Text
 import tensorflow as tf
 import re
