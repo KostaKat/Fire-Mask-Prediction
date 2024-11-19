@@ -1,6 +1,6 @@
 """Dataset reader for Earth Engine data."""
 from data_utils import data_cons as dc
-
+from typing import Dict, List, Optional, Tuple, Text
 import re
 
 def _get_base_key(key: Text) -> Text:
