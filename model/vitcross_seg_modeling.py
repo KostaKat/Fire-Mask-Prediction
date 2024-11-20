@@ -602,8 +602,9 @@ class VisionTransformer(nn.Module):
 
     def load_from(self, weights):
         with torch.no_grad():
-
             res_weight = weights
+
+            # Load the pretrained weights for the embeddings without adjustment
             self.transformer.embeddings.patch_embeddings.weight.copy_(
                 np2th(weights["embedding/kernel"], conv=True))
             self.transformer.embeddings.patch_embeddings.bias.copy_(
@@ -613,6 +614,7 @@ class VisionTransformer(nn.Module):
             self.transformer.embeddings.patch_embeddingsd.bias.copy_(
                 np2th(weights["embedding/bias"]))
 
+            # Load the encoder norms as usual
             self.transformer.encoder.encoder_norm.weight.copy_(
                 np2th(weights["Transformer/encoder_norm/scale"]))
             self.transformer.encoder.encoder_norm.bias.copy_(
@@ -622,8 +624,8 @@ class VisionTransformer(nn.Module):
             self.transformer.encoder.encoder_normd.bias.copy_(
                 np2th(weights["Transformer/encoder_norm/bias"]))
 
+            # Adjust the position embeddings if necessary
             posemb = np2th(weights["Transformer/posembed_input/pos_embedding"])
-
             posemb_new = self.transformer.embeddings.position_embeddings
             if posemb.size() == posemb_new.size():
                 self.transformer.embeddings.position_embeddings.copy_(posemb)
@@ -648,18 +650,38 @@ class VisionTransformer(nn.Module):
                 self.transformer.embeddings.position_embeddings.copy_(
                     np2th(posemb))
 
-            # Encoder whole
+             
+           # Load the encoder weights
             for bname, block in self.transformer.encoder.named_children():
                 for uname, unit in block.named_children():
                     unit.load_from(weights, n_block=uname)
-
+    
+            # Adjust the weights for the ResNet encoder's first convolutional layer
             if self.transformer.embeddings.hybrid:
-                ws = res_weight["conv_root/kernel"]
-                self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(
-                    np2th(ws, conv=True))
-                ws = np.expand_dims(np.mean(ws, axis=2), axis=2)
+                # Load the pretrained weights for the root conv
+                ws = res_weight["conv_root/kernel"]  # Shape: (7, 7, 3, 64)
+                pretrained_weights = np2th(ws, conv=True)  # Shape: (64, 3, 7, 7)
+    
+                # Create new weight tensor with the required shape
+                new_weights_shape = self.transformer.embeddings.hybrid_model.root.conv.weight.shape  # Should be (64, 12, 7, 7)
+                new_weights = torch.zeros(new_weights_shape)
+    
+                # Copy the pretrained weights into the first 3 channels
+                new_weights[:, :3, :, :] = pretrained_weights
+    
+                # Copy the RGB weights into the remaining channels
+                for i in range(3, new_weights_shape[1]):
+                    new_weights[:, i:i+1, :, :] = pretrained_weights[:, i % 3:i % 3 + 1, :, :]
+    
+                # Assign the new weights
+                self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(new_weights)
+    
+                # Load weights for 'rootd' as before (assuming it still has 1 input channel)
+                ws_depth = np.expand_dims(np.mean(ws, axis=2), axis=2)
                 self.transformer.embeddings.hybrid_model.rootd.conv.weight.copy_(
-                    np2th(ws, conv=True))
+                    np2th(ws_depth, conv=True))
+    
+                # Load group norm weights
                 gn_weight = np2th(res_weight["gn_root/scale"]).view(-1)
                 gn_bias = np2th(res_weight["gn_root/bias"]).view(-1)
                 self.transformer.embeddings.hybrid_model.root.gn.weight.copy_(
@@ -670,7 +692,8 @@ class VisionTransformer(nn.Module):
                     gn_weight)
                 self.transformer.embeddings.hybrid_model.rootd.gn.bias.copy_(
                     gn_bias)
-
+    
+                # Load the rest of the ResNet encoder weights as usual
                 for bname, block in self.transformer.embeddings.hybrid_model.body.named_children():
                     for uname, unit in block.named_children():
                         unit.load_from(res_weight, n_block=bname, n_unit=uname)
@@ -678,7 +701,7 @@ class VisionTransformer(nn.Module):
                     for uname, unit in block.named_children():
                         unit.load_from(res_weight, n_block=bname, n_unit=uname)
             print('Load pretrained done.')
-
+    
 
 CONFIGS = {
     'ViT-B_16': configs.get_b16_config(),
