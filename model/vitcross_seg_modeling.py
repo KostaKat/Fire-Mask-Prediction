@@ -507,7 +507,7 @@ class DecoderBlock(nn.Module):
        if skip is not None:
            # Upsample x to match the size of skip
            x = F.interpolate(x, size=skip.shape[2:], mode='bilinear', align_corners=False)
-           print(f"DecoderBlock: x shape after upsampling: {x.shape}, skip shape: {skip.shape}")
+        #    print(f"DecoderBlock: x shape after upsampling: {x.shape}, skip shape: {skip.shape}")
            x = torch.cat([x, skip], dim=1)
        else:
            # Optionally, define a default upsampling scale or method
@@ -562,7 +562,7 @@ class DecoderCup(nn.Module):
         h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
-        print(f"DecoderCup: initial x shape: {x.shape}")
+        # print(f"DecoderCup: initial x shape: {x.shape}")
 
         x = self.conv_more(x)
         for i, decoder_block in enumerate(self.blocks):
@@ -570,10 +570,10 @@ class DecoderCup(nn.Module):
                 skip = features[i] if (i < self.config.n_skip) else None
             else:
                 skip = None
-            if skip is not None:
-                print(f"DecoderCup: skip connection at index {i} has shape: {skip.shape}")
+            # if skip is not None:
+            #     print(f"DecoderCup: skip connection at index {i} has shape: {skip.shape}")
             x = decoder_block(x, skip=skip)
-            print(f"DecoderCup: output of decoder block {i} has shape: {x.shape}")
+            # print(f"DecoderCup: output of decoder block {i} has shape: {x.shape}")
         return x
 
 
@@ -655,32 +655,32 @@ class VisionTransformer(nn.Module):
             for bname, block in self.transformer.encoder.named_children():
                 for uname, unit in block.named_children():
                     unit.load_from(weights, n_block=uname)
-    
+
             # Adjust the weights for the ResNet encoder's first convolutional layer
             if self.transformer.embeddings.hybrid:
                 # Load the pretrained weights for the root conv
                 ws = res_weight["conv_root/kernel"]  # Shape: (7, 7, 3, 64)
                 pretrained_weights = np2th(ws, conv=True)  # Shape: (64, 3, 7, 7)
-    
+
                 # Create new weight tensor with the required shape
                 new_weights_shape = self.transformer.embeddings.hybrid_model.root.conv.weight.shape  # Should be (64, 12, 7, 7)
                 new_weights = torch.zeros(new_weights_shape)
-    
+
                 # Copy the pretrained weights into the first 3 channels
                 new_weights[:, :3, :, :] = pretrained_weights
-    
+
                 # Copy the RGB weights into the remaining channels
                 for i in range(3, new_weights_shape[1]):
                     new_weights[:, i:i+1, :, :] = pretrained_weights[:, i % 3:i % 3 + 1, :, :]
-    
+
                 # Assign the new weights
                 self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(new_weights)
-    
+
                 # Load weights for 'rootd' as before (assuming it still has 1 input channel)
                 ws_depth = np.expand_dims(np.mean(ws, axis=2), axis=2)
                 self.transformer.embeddings.hybrid_model.rootd.conv.weight.copy_(
                     np2th(ws_depth, conv=True))
-    
+
                 # Load group norm weights
                 gn_weight = np2th(res_weight["gn_root/scale"]).view(-1)
                 gn_bias = np2th(res_weight["gn_root/bias"]).view(-1)
@@ -692,7 +692,7 @@ class VisionTransformer(nn.Module):
                     gn_weight)
                 self.transformer.embeddings.hybrid_model.rootd.gn.bias.copy_(
                     gn_bias)
-    
+
                 # Load the rest of the ResNet encoder weights as usual
                 for bname, block in self.transformer.embeddings.hybrid_model.body.named_children():
                     for uname, unit in block.named_children():
@@ -701,7 +701,7 @@ class VisionTransformer(nn.Module):
                     for uname, unit in block.named_children():
                         unit.load_from(res_weight, n_block=bname, n_unit=uname)
             print('Load pretrained done.')
-    
+
 
 CONFIGS = {
     'ViT-B_16': configs.get_b16_config(),

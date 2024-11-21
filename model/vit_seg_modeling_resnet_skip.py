@@ -200,7 +200,7 @@ class FuseResNetV2(nn.Module):
         self.activation=nn.ReLU(inplace=True)
 
         self.root = nn.Sequential(OrderedDict([
-            ('conv', StdConv2d(12, width, kernel_size=7, stride=2, bias=False, padding=3)),  # For encoder 1
+            ('conv', StdConv2d(11, width, kernel_size=7, stride=2, bias=False, padding=3)),  # For encoder 1
             ('gn', nn.GroupNorm(32, width, eps=1e-6)),
             ('relu', nn.ReLU(inplace=True)),
         ]))
