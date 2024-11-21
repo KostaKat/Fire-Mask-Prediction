@@ -21,6 +21,9 @@ def main(args):
     NUM_EPOCHS = args.num_epochs
     NUM_CLASSES = args.num_classes
     BASE_LR = args.base_lr
+    PATIENCE = args.patience_early_stopping
+    DELTA = args.delta_early_stopping
+    RESIZE_SIZE = args.resize_size
 
     # Get the TensorFlow dataset
     dataset_train = get_dataset(
@@ -59,14 +62,18 @@ def main(args):
         random_crop=True,
         center_crop=False
     )
+    # Create a smaller subset for training
+    dataset_train = dataset_train.take(10)  # Take the first 100 samples
+    dataset_val = dataset_val.take(1)
+    dataset_test = dataset_test.take(1)
+
     dataset_train = dataset_train.map(split_inputs)
     dataset_val = dataset_val.map(split_inputs)
     dataset_test = dataset_test.map(split_inputs)
-    dataset_train = TFToTorchDataset(dataset_train)
-    dataset_val = TFToTorchDataset(dataset_val)
-    dataset_test = TFToTorchDataset(dataset_test)
+    dataset_train = TFToTorchDataset(dataset_train, resize_size=(RESIZE_SIZE, RESIZE_SIZE))
+    dataset_val = TFToTorchDataset(dataset_val, resize_size=(RESIZE_SIZE, RESIZE_SIZE))
+    dataset_test = TFToTorchDataset(dataset_test, resize_size=(RESIZE_SIZE, RESIZE_SIZE))
 
-    # 
     # Create data loaders
     train_loader = DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(dataset_val, batch_size=BATCH_SIZE, shuffle=False)
@@ -78,7 +85,7 @@ def main(args):
     config_vit.n_skip = 3
     config_vit.patches.grid = (4, 4)
 
-    net = ViT_seg(config_vit, img_size=224, num_classes=NUM_CLASSES).to(device)
+    net = ViT_seg(config_vit, img_size=RESIZE_SIZE, num_classes=NUM_CLASSES).to(device)
     net.load_from(weights=np.load(config_vit.pretrained_path))
     net.num_classes = NUM_CLASSES  # Add num_classes attribute for convenience
 
@@ -86,25 +93,36 @@ def main(args):
     optimizer = optim.SGD(net.parameters(), lr=BASE_LR, momentum=0.9, weight_decay=0.0005)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 35, 45], gamma=0.1)
 
-    # Training loop
+    # Early stopping variables
     best_auc = 0.0
+    wait = 0  # Patience counter
 
-    # Wrap the epoch loop with tqdm
+    # Training loop with early stopping
     for epoch in tqdm(range(1, NUM_EPOCHS + 1), desc="Training Progress"):
         train_one_epoch(net, train_loader, optimizer, epoch, device)
         scheduler.step()
 
         # Validation
         val_auc = validate(net, val_loader, device)
-        if val_auc > best_auc:
+        if val_auc > best_auc + DELTA:
             best_auc = val_auc
+            wait = 0  # Reset patience counter
             # Save the best model
             torch.save(net.state_dict(), f'best_model_epoch_{epoch}.pth')
-        print(f'Epoch {epoch}, Validation AUC PR: {val_auc:.4f}, Best AUC PR: {best_auc:.4f}')
+            print(f"Epoch {epoch}: New best AUC PR: {best_auc:.4f}. Model saved.")
+        else:
+            wait += 1
+            print(f"Epoch {epoch}: Validation AUC PR: {val_auc:.4f}. No improvement for {wait}/{PATIENCE} epochs.")
+
+        # Check if patience has been exhausted
+        if wait >= PATIENCE:
+            print(f"Early stopping at epoch {epoch}. Best AUC PR: {best_auc:.4f}.")
+            break
 
     # Test after training
     test_auc = test(net, test_loader, device)
-    
+    print(f"Test AUC PR: {test_auc:.4f}")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training script')
@@ -117,5 +135,8 @@ if __name__ == '__main__':
     parser.add_argument('--sample_size', type=int, default=64, help='Sample size')
     parser.add_argument('--num_in_channels', type=int, default=12, help='Number of input channels')
     parser.add_argument('--img_size', type=int, default=64, help='Image size for the model')
+    parser.add_argument('--resize_size', type=int, default=224, help='Resize size for the model')
+    parser.add_argument('--patience_early_stopping', type=int, default=10, help='Patience for early stopping')
+    parser.add_argument('--delta_early_stopping', type=float, default=0.001, help='Delta for early stopping')
     args = parser.parse_args()
     main(args)

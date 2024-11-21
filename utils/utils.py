@@ -349,4 +349,4 @@ def CrossEntropy2d(input, target, weight=None, size_average=True):
     n, c, h, w = input.size()
     input = input.permute(0, 2, 3, 1).contiguous().view(-1, c)
     target = target.view(-1)
-    return F.cross_entropy(input, target, weight=weight, reduction='mean' if size_average else 'sum')
+    return F.cross_entropy(input, target, weight=weight,reduction='mean' if size_average else 'sum')
