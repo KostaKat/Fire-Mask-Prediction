@@ -469,7 +469,7 @@ class DecoderBlock(nn.Module):
     def forward(self, x, skip=None):
         x = self.up(x)
         if skip is not None:
-            print(f"DecoderBlock: x shape after upsampling: {x.shape}, skip shape: {skip.shape}")
+            # print(f"DecoderBlock: x shape after upsampling: {x.shape}, skip shape: {skip.shape}")
 
             x = torch.cat([x, skip], dim=1)
         x = self.conv1(x)
@@ -519,7 +519,7 @@ class DecoderCup(nn.Module):
         h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
-        print(f"DecoderCup: initial x shape: {x.shape}")
+        # print(f"DecoderCup: initial x shape: {x.shape}")
 
         trans_x = x
         x = self.conv_more(x)

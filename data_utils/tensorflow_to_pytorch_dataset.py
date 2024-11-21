@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
 class TFToTorchDataset(Dataset):
-    def __init__(self, tf_dataset, resize_size=(224, 224)):
+    def __init__(self, tf_dataset, resize_size=(64, 64)):
         """
         Args:
             tf_dataset: TensorFlow dataset.
