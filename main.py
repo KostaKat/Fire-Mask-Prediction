@@ -63,9 +63,9 @@ def main(args):
         center_crop=False
     )
     # Create a smaller subset for training
-    dataset_train = dataset_train.take(10)  # Take the first 100 samples
-    dataset_val = dataset_val.take(1)
-    dataset_test = dataset_test.take(1)
+    # dataset_train = dataset_train.take(10)  # Take the first 100 samples
+    # dataset_val = dataset_val.take(1)
+    # dataset_test = dataset_test.take(1)
 
     dataset_train = dataset_train.map(split_inputs)
     dataset_val = dataset_val.map(split_inputs)
@@ -74,6 +74,7 @@ def main(args):
     dataset_val = TFToTorchDataset(dataset_val, resize_size=(RESIZE_SIZE, RESIZE_SIZE))
     dataset_test = TFToTorchDataset(dataset_test, resize_size=(RESIZE_SIZE, RESIZE_SIZE))
 
+    print(len(dataset_train), len(dataset_val), len(dataset_test))
     # Create data loaders
     train_loader = DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(dataset_val, batch_size=BATCH_SIZE, shuffle=False)
@@ -83,12 +84,22 @@ def main(args):
     config_vit = CONFIGS_ViT_seg['R50-ViT-B_16']
     config_vit.n_classes = NUM_CLASSES
     config_vit.n_skip = 3
-    config_vit.patches.grid = (4, 4)
+    config_vit.patches.grid = (4,4)
 
     net = ViT_seg(config_vit, img_size=RESIZE_SIZE, num_classes=NUM_CLASSES).to(device)
-    net.load_from(weights=np.load(config_vit.pretrained_path))
     net.num_classes = NUM_CLASSES  # Add num_classes attribute for convenience
+    if args.weights_path:
+        print(f"Loading weights from {args.weights_path}")
+        net.load_state_dict(torch.load(args.weights_path, map_location=device))
+        # Testing mode
+        if args.test_only:
+            # Test the model
+            test_auc = test(net, test_loader, device)
+            return
 
+
+    else:
+        net.load_from(weights=np.load(config_vit.pretrained_path))
     # Initialize optimizer and scheduler
     optimizer = optim.SGD(net.parameters(), lr=BASE_LR, momentum=0.9, weight_decay=0.0005)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 35, 45], gamma=0.1)
@@ -108,7 +119,7 @@ def main(args):
             best_auc = val_auc
             wait = 0  # Reset patience counter
             # Save the best model
-            torch.save(net.state_dict(), f'best_model_epoch_{epoch}.pth')
+            torch.save(net.state_dict(), f'best_model_epoch_{epoch}_64.pth')
             print(f"Epoch {epoch}: New best AUC PR: {best_auc:.4f}. Model saved.")
         else:
             wait += 1
@@ -121,7 +132,7 @@ def main(args):
 
     # Test after training
     test_auc = test(net, test_loader, device)
-    print(f"Test AUC PR: {test_auc:.4f}")
+
 
 
 if __name__ == '__main__':
@@ -135,8 +146,11 @@ if __name__ == '__main__':
     parser.add_argument('--sample_size', type=int, default=64, help='Sample size')
     parser.add_argument('--num_in_channels', type=int, default=12, help='Number of input channels')
     parser.add_argument('--img_size', type=int, default=64, help='Image size for the model')
-    parser.add_argument('--resize_size', type=int, default=224, help='Resize size for the model')
+    parser.add_argument('--resize_size', type=int, default=64, help='Resize size for the model')
     parser.add_argument('--patience_early_stopping', type=int, default=10, help='Patience for early stopping')
     parser.add_argument('--delta_early_stopping', type=float, default=0.001, help='Delta for early stopping')
+    parser.add_argument('--test_only', action='store_true', help='Run testing only and skip training')
+    parser.add_argument('--weights_path', type=str, default=None, help='Path to the model weights to load for testing')
+
     args = parser.parse_args()
     main(args)
